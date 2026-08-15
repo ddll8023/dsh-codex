@@ -19,10 +19,14 @@
 ### 方式 A（推荐）：`dsh plugin`
 
 ```bash
-# 在插件目录外执行；dsh 会 forward 给 pnpm 并自动把声明了 dsh.bundle 的包加入
-# 该 profile 的 bundle 层
+# 直接从 GitHub 安装（推荐）
+dsh plugin --profile web add github:ddll8023/dsh-codex
+
+# 或先 clone 到本地，再安装本地路径
+git clone https://github.com/ddll8023/dsh-codex.git
 dsh plugin --profile web add /绝对路径/dsh-codex
-# 或已发布到 registry 后：
+
+# 已发布到 npm registry 后也可使用包名：
 dsh plugin --profile web add dsh-codex
 ```
 
