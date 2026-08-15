@@ -1,0 +1,25 @@
+# dsh-codex bundle patch: register the standalone OpenAI Codex provider plugin.
+#
+# Applied as ONE insert over the composed profile root (after the base and web
+# app bundles, before the user's profile cordis.patch.yml). The row activates
+# the plugin, which registers the `openai-codex` provider route on `ctx.llm`
+# and the `/codex` login/logout/status commands.
+#
+# The plugin config lives here (composition layer) and is layered under the
+# optional `llm-codex:` user-settings section; secrets never enter either —
+# OAuth tokens are stored through the credential seam under OPENAI_CODEX_OAUTH.
+
+- insert:
+    - id: llm-codex
+      name: 'dsh-codex'
+      # Optional composition defaults; each field can be overridden in the
+      # `llm-codex:` user-settings section:
+      # config:
+      #   baseURL: https://chatgpt.com/backend-api
+      #   transport: sse            # sse | websocket | websocket-cached | auto
+      #   cacheRetention: short     # none | short | long
+      #   streamIdleTimeoutMs: 300000
+      #   refreshLeadTimeMs: 300000 # refresh when <=5 min remain
+      #   retryPolicy:
+      #     mode: normal
+      #     maxRetries: 2
