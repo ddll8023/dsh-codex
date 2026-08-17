@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Context } from "@deepseek-ai/cordis";
 import LlmRuntime from "@deepseek-ai/dsh-llm";
-import { FakeSettings, fakeCommandsService, fakeCredentialsService, mockFetch, sseResponse, textStreamEvents, makeCredential } from "./helpers.js";
+import { FakeSettings, fakeCommandsService, fakeCredentialsService, jsonResponse, mockFetch, sseResponse, textStreamEvents, makeCredential } from "./helpers.js";
 import * as plugin from "../lib/index.js";
 
 /** Boot a minimal harness app with the dsh-codex plugin mounted. */
@@ -138,6 +138,56 @@ test("settings change re-resolves connection facts without restart", async () =>
     } finally {
       restore();
     }
+  } finally {
+    await app.fiber.dispose();
+  }
+});
+
+test("/codex usage reports the quota when logged in and asks for login otherwise", async () => {
+  const { app, credentials } = await bootApp();
+  try {
+    const codex = app.get("commands").find("codex");
+    const invoke = (rawInput) =>
+      codex.handler({ commandId: "c2", agent: {}, rawInput, signal: new AbortController().signal });
+
+    // Not logged in: no network call, explicit guidance.
+    let calls = 0;
+    const { restore } = mockFetch(() => {
+      calls += 1;
+      return jsonResponse(500, {});
+    });
+    let result;
+    try {
+      result = await invoke(" usage");
+    } finally {
+      restore();
+    }
+    assert.equal(result.kind, "error");
+    assert.match(result.text, /not logged in/);
+    assert.equal(calls, 0, "no usage request without a credential");
+
+    // Logged in: quota line comes back from wham/usage.
+    await credentials.set("OPENAI_CODEX_OAUTH", JSON.stringify(makeCredential({ accountId: "user-cli" })));
+    const { restore: restore2 } = mockFetch(({ url }) => {
+      if (url === "https://chatgpt.com/backend-api/wham/usage") {
+        return jsonResponse(200, {
+          plan_type: "pro",
+          rate_limit: {
+            primary_window: { used_percent: 61, reset_at: "2026-08-17T03:00:00Z" },
+            secondary_window: { used_percent: 5, reset_at: "2026-08-18T00:00:00Z" },
+          },
+        });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    try {
+      result = await invoke(" usage");
+    } finally {
+      restore2();
+    }
+    assert.equal(result.kind, "success");
+    assert.match(result.text, /^Usage: \[pro\]/);
+    assert.match(result.text, /5h 61% \(reset/);
   } finally {
     await app.fiber.dispose();
   }

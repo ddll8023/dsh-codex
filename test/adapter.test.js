@@ -436,3 +436,5 @@ test("image input remains unsupported for text-only Codex models", async () => {
   assert.equal(finish.reason.failure.code, "UNSUPPORTED_CONTENT");
   assert.match(finish.reason.failure.message, /does not support image input/);
 });
+
+/** Decode the (possibly zstd) request body and return its JSON. */

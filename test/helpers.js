@@ -269,6 +269,66 @@ export function toolCallStreamEvents(name, argsJson, responseId = "resp_tool") {
 }
 
 /**
+ * Responses-API SSE events mimicking a native Codex web search: the backend
+ * emits a `web_search_call` item plus the `response.web_search_call.completed`
+ * event, then the model's final answer text (with citations) flows through the
+ * normal message item. pi-ai must ignore the search items and stream the text.
+ */
+export function webSearchStreamEvents(text, responseId = "resp_search") {
+  return [
+    { type: "response.created", response: { id: responseId } },
+    {
+      type: "response.output_item.added",
+      output_index: 0,
+      item: { id: "msg_a", type: "message", role: "assistant", content: [{ type: "output_text", text: "" }] },
+    },
+    {
+      type: "response.output_item.added",
+      output_index: 1,
+      item: { id: "wsc_1", type: "web_search_call", call_id: "call_search", status: "in_progress" },
+    },
+    {
+      type: "response.web_search_call.started",
+      output_index: 1,
+      item_id: "wsc_1",
+      call_id: "call_search",
+    },
+    {
+      type: "response.web_search_call.completed",
+      output_index: 1,
+      item_id: "wsc_1",
+      call_id: "call_search",
+      output: [{ type: "web_search_tool_result", title: "t", url: "https://example.com", text: "snippet" }],
+    },
+    {
+      type: "response.output_item.done",
+      output_index: 1,
+      item: { id: "wsc_1", type: "web_search_call", call_id: "call_search", status: "completed" },
+    },
+    { type: "response.output_text.delta", output_index: 0, delta: text },
+    {
+      type: "response.output_item.done",
+      output_index: 0,
+      item: { id: "msg_a", type: "message", role: "assistant", content: [{ type: "output_text", text }] },
+    },
+    {
+      type: "response.completed",
+      response: {
+        id: responseId,
+        status: "completed",
+        usage: {
+          input_tokens: 12,
+          output_tokens: 9,
+          total_tokens: 21,
+          input_tokens_details: {},
+          output_tokens_details: {},
+        },
+      },
+    },
+  ];
+}
+
+/**
  * Collect an async iterable of harness chunks, normalizing an adapter throw
  * into a terminal error/aborted finish chunk exactly like LlmRuntime does.
  */

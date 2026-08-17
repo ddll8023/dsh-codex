@@ -18,7 +18,7 @@
       #   baseURL: https://chatgpt.com/backend-api
       #   transport: sse            # sse | websocket | websocket-cached | auto
       #   cacheRetention: short     # none | short | long
-      #   nativeWebSearch: true     # only when this turn exposes Harness web_search
+#   nativeWebSearch: true     # true=启用 Codex 原生网络搜索（默认，仅当本 turn 暴露 web_search 时生效）；false=退回 harness web_search 函数工具
       #   webSearchMode: live       # live | cached | indexed | disabled
       #   streamIdleTimeoutMs: 300000
       #   refreshLeadTimeMs: 300000 # refresh when <=5 min remain
