@@ -18,6 +18,8 @@
       #   baseURL: https://chatgpt.com/backend-api
       #   transport: sse            # sse | websocket | websocket-cached | auto
       #   cacheRetention: short     # none | short | long
+      #   nativeWebSearch: true     # only when this turn exposes Harness web_search
+      #   webSearchMode: live       # live | cached | indexed | disabled
       #   streamIdleTimeoutMs: 300000
       #   refreshLeadTimeMs: 300000 # refresh when <=5 min remain
       #   retryPolicy:

@@ -12,6 +12,7 @@
 - 通过 ChatGPT Plus/Pro OAuth 接入 Codex 模型，不依赖 DeepSeek API Key。
 - 支持浏览器 OAuth 登录和 Device Code 无浏览器登录。
 - 模型选择器自动发现 Codex 模型，支持文本流、工具调用和图片输入（仅限模型目录声明支持 image 的模型）。
+- 支持 Codex Native Web Search：`openai-codex` 当前 turn 暴露 `web_search` 时，自动转换为 Codex Responses hosted `web_search`。
 - 凭证使用 DSH 自身凭证服务保存，自动刷新、不写入日志。
 
 ## 安装与启用
@@ -59,6 +60,24 @@ dsh --profile web --dump-config | grep -A2 llm-codex
 
 登录后在模型选择器中选择 `openai-codex` 下的任意 Codex 模型即可对话；支持文本流、工具调用和图片输入，事件格式与现有 Provider 一致。
 
+## Codex Native Web Search
+
+搜索调用仍使用 Harness 原有的 `web_search` 工具语义：
+
+- 使用 `openai-codex` 时，`dsh-codex` 在发送 Codex Responses 请求前，通过 pi-ai 的 `onPayload` 做 request-local 转换：删除普通 function `web_search`，保留其他工具，并追加 Codex hosted `{ type: "web_search", ... }`。
+- 只有当前 `options.tools` 确实包含 `web_search` 时才转换；没有该工具不会额外授予联网能力。
+- 使用 DeepSeek、Claude、Gemini 或其他 Provider 时，仍是 `dsh-tool-web -> ctx.web -> Harness 配置的 Search Provider`。
+- 插件不会修改 `ctx.web.searchProvider`、`DSH_WEB_SEARCH_PROVIDER`、Exa、Perplexity 或 DeepSeek Search，也不需要为 Codex 配置 Harness Search Provider。
+
+默认配置为 `nativeWebSearch: true`、`webSearchMode: live`。Codex 公开 Responses 请求格式支持以下模式：
+
+- `live`：`{ type: "web_search", external_web_access: true }`
+- `cached`：`{ type: "web_search", external_web_access: false }`
+- `indexed`：`{ type: "web_search", external_web_access: true, indexed_web_access: true }`
+- `disabled`：不注入 hosted search；等同于关闭本 turn 的 Native Search
+
+是否可用仍取决于实际 Codex backend、模型和 ChatGPT 账号能力；不支持时不会静默切换第三方 Search Provider。
+
 ### 配置（可选，非密钥）
 
 ```yaml
@@ -67,6 +86,8 @@ llm-codex:
   baseURL: https://chatgpt.com/backend-api   # 端点（默认）
   transport: sse                             # sse | websocket | websocket-cached | auto
   cacheRetention: short                      # none | short | long
+  nativeWebSearch: true                       # 仅替换已授权的 web_search 工具
+  webSearchMode: live                         # live | cached | indexed | disabled
   refreshLeadTimeMs: 300000                  # 提前刷新阈值
   streamIdleTimeoutMs: 300000
   retryPolicy:
@@ -87,6 +108,7 @@ llm-codex:
 - **`originator` 固定为 `"pi"`**：请求头与 OAuth authorize URL 的 `originator` 由 pi-ai 的 codex 实现硬编码（`originator: "pi"`，即 pi-ai 自身的标识）。插件复用该实现，因此无法在不复制协议的情况下改写为其它值；ChatGPT 后端可能按 originator 做白名单/风控，改动有风险，故保持 pi-ai 官方值。
 - **User-Agent** 由 pi-ai codex 传输层设置（`pi (platform; arch)`），会覆盖 harness 默认 attribution 的 UA；attribution 头仍按契约传入（与 dsh-llm-pi-ai 行为一致）。
 - Codex 后端协议为社区逆向/维护（pi-ai 维护），`chatgpt.com/backend-api` 的字段、限流、风控可能随 ChatGPT 前端变化；若后端收紧，需要 pi-ai 升级适配。
+- 当前 `@earendil-works/pi-ai@0.82.1` 的 `openai-codex-responses` 已能透传 hosted search 请求，但 `openai-responses-shared` 会忽略 `web_search_call` 事件，并丢弃 `output_text.annotations`；由于 pi-ai 与 Harness `StreamChunk` 当前没有结构化 citation 字段，source metadata 不能在插件层完整恢复。普通文本流和未知搜索事件仍会继续到终态。
 - 浏览器流程依赖本地 `127.0.0.1:1455` 端口可用；端口被占用时 pi-ai 会走手工粘贴授权码的降级路径，本插件在 Web GUI 下以错误信息提示。
 - 用量上限（quota）等错误映射基于消息文本分类，OpenAI 侧文案变化可能影响分类（回退为 `PI_AI_ERROR`，不影响请求本身）。
 
@@ -107,6 +129,7 @@ dsh-codex/
 │   ├── oauth.js          # /codex 命令的登录/登出/状态编排与交互适配
 │   ├── adapter.js        # CodexAdapter（dsh LlmAdapter 实现）
 │   ├── context.js        # harness 消息 → pi-ai Context
+│   ├── web-search.js      # request-local Hosted Web Search payload 转换
 │   ├── replay.js         # pi-ai 回放状态（多轮签名透传）
 │   └── stream.js         # pi-ai 事件 → harness StreamChunk
 └── test/                 # 插件自身测试（mock HTTP，不执行真实登录）
@@ -115,6 +138,7 @@ dsh-codex/
     ├── refresh.test.js
     ├── oauth.test.js
     ├── adapter.test.js
+    ├── web-search.test.js
     └── plugin.test.js
 ```
 
@@ -125,8 +149,10 @@ cd dsh-codex
 npm test
 ```
 
-测试覆盖（29 项，全绿）：
+测试覆盖（41 项，全绿）：
 
+- Codex Native Web Search：权限存在时 function → hosted 转换、其他工具保留、无权限不注入、配置关闭、live/cached/indexed/disabled 模式
+- `web_search_call`/未知搜索事件与带 annotation 的文本流不崩溃；不支持搜索错误映射为 `CODEX_WEB_SEARCH_UNSUPPORTED`
 - JWT accountId 解析（含缺失/畸形 token）
 - 凭证记录的校验与存取（credentials seam 往返、损坏记录、并发 modify 串行化）
 - 提前刷新：阈值判断、旋转持久化、并发只刷新一次、失败保留旧凭证并报 `AUTH`

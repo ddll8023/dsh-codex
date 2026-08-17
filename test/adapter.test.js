@@ -19,18 +19,26 @@ import {
   toolCallStreamEvents,
 } from "./helpers.js";
 
-function makeAdapter(initialStore = {}, freshen = async () => {}, attachments) {
+function makeAdapter(initialStore = {}, freshen = async () => {}, attachments, configOverrides = {}) {
   const seam = fakeCredentialsService(initialStore);
   const ctx = { get: (name) => (name === "credentials" ? seam : undefined) };
   const store = new SeamCredentialStore(ctx);
   const models = buildModels(store, undefined);
   const config = {
-    options: () => resolveAdapterOptions({}),
+    options: () => resolveAdapterOptions(configOverrides),
     models: () => models,
     freshen,
     attachments: () => attachments,
   };
   return { adapter: new CodexAdapter(config), store, seam, models };
+}
+
+function decodeBody(captured) {
+  return JSON.parse(
+    captured.headers["content-encoding"] === "zstd"
+      ? zstdDecompressSync(Buffer.from(captured.body)).toString()
+      : captured.body,
+  );
 }
 
 test("adapter metadata and model catalog", async () => {
@@ -85,6 +93,138 @@ test("wire request carries the Codex headers and Responses-API body", async () =
   const tool = body.tools.find((entry) => entry.name === "get_weather");
   assert.ok(tool, "tools sent");
   assert.equal(tool.type, "function");
+});
+
+test("Codex native web search replaces only the Harness web_search function", async () => {
+  const credential = makeCredential();
+  const { adapter } = makeAdapter({ OPENAI_CODEX_OAUTH: JSON.stringify(credential) });
+  let captured;
+  const { restore } = mockFetch(({ headers, body }) => {
+    captured = { headers, body };
+    return sseResponse(textStreamEvents("native search"));
+  });
+  try {
+    const chunks = await collectChunks(
+      adapter.stream(
+        generateOptions({
+          tools: [
+            { name: "read", description: "Read a file", parameters: { type: "object", properties: {} } },
+            { name: "web_search", description: "Search the web", parameters: { type: "object", properties: { query: { type: "string" } } } },
+            { name: "bash", description: "Run a command", parameters: { type: "object", properties: {} } },
+          ],
+        }),
+      ),
+    );
+    assert.equal(chunks.at(-1).reason.kind, "stop");
+  } finally {
+    restore();
+  }
+  const body = decodeBody(captured);
+  assert.deepEqual(
+    body.tools.filter((tool) => tool.type === "function").map((tool) => tool.name),
+    ["read", "bash"],
+  );
+  assert.deepEqual(body.tools.find((tool) => tool.type === "web_search"), {
+    type: "web_search",
+    external_web_access: true,
+  });
+});
+
+test("Codex does not inject hosted search when Harness did not expose web_search", async () => {
+  const credential = makeCredential();
+  const { adapter } = makeAdapter({ OPENAI_CODEX_OAUTH: JSON.stringify(credential) });
+  let captured;
+  const { restore } = mockFetch(({ headers, body }) => {
+    captured = { headers, body };
+    return sseResponse(textStreamEvents("ordinary tools"));
+  });
+  try {
+    await collectChunks(adapter.stream(generateOptions({ tools: [{ name: "read", description: "Read", parameters: { type: "object" } }] })));
+  } finally {
+    restore();
+  }
+  const body = decodeBody(captured);
+  assert.equal(body.tools.some((tool) => tool.type === "web_search"), false);
+});
+
+test("nativeWebSearch=false keeps the ordinary web_search function unchanged", async () => {
+  const credential = makeCredential();
+  const { adapter } = makeAdapter(
+    { OPENAI_CODEX_OAUTH: JSON.stringify(credential) },
+    async () => {},
+    undefined,
+    { nativeWebSearch: false },
+  );
+  let captured;
+  const { restore } = mockFetch(({ headers, body }) => {
+    captured = { headers, body };
+    return sseResponse(textStreamEvents("disabled"));
+  });
+  try {
+    await collectChunks(
+      adapter.stream(
+        generateOptions({
+          tools: [{ name: "web_search", description: "Search", parameters: { type: "object" } }],
+        }),
+      ),
+    );
+  } finally {
+    restore();
+  }
+  const body = decodeBody(captured);
+  assert.ok(body.tools.some((tool) => tool.type === "function" && tool.name === "web_search"));
+  assert.equal(body.tools.some((tool) => tool.type === "web_search"), false);
+});
+
+test("Codex search events and final text do not break the stream parser", async () => {
+  const credential = makeCredential();
+  const { adapter } = makeAdapter({ OPENAI_CODEX_OAUTH: JSON.stringify(credential) });
+  const textEvents = textStreamEvents("answer with search");
+  textEvents[4].item.content[0].annotations = [
+    { type: "url_citation", url: "https://example.com/source", title: "Example source" },
+  ];
+  const events = [
+    textEvents[0],
+    { type: "response.web_search_call.in_progress", item_id: "ws_1", output_index: 0 },
+    { type: "response.output_item.added", output_index: 0, item: { id: "ws_1", type: "web_search_call", status: "in_progress" } },
+    { type: "response.web_search_call.searching", item_id: "ws_1", output_index: 0 },
+    { type: "response.web_search_call.completed", item_id: "ws_1", output_index: 0 },
+    ...textEvents.slice(1),
+  ];
+  const { restore } = mockFetch(() => sseResponse(events));
+  try {
+    const chunks = await collectChunks(
+      adapter.stream(
+        generateOptions({
+          tools: [{ name: "web_search", description: "Search", parameters: { type: "object" } }],
+        }),
+      ),
+    );
+    assert.equal(chunks.filter((chunk) => chunk.type === "text-delta").map((chunk) => chunk.text).join(""), "answer with search");
+    assert.equal(chunks.at(-1).reason.kind, "stop");
+  } finally {
+    restore();
+  }
+});
+
+test("unsupported Codex native search errors use a stable provider code", async () => {
+  const credential = makeCredential();
+  const { adapter } = makeAdapter({ OPENAI_CODEX_OAUTH: JSON.stringify(credential) });
+  const { restore } = mockFetch(() =>
+    jsonResponse(400, { error: { message: "web_search is not supported for this model" } }),
+  );
+  try {
+    const chunks = await collectChunks(
+      adapter.stream(
+        generateOptions({
+          tools: [{ name: "web_search", description: "Search", parameters: { type: "object" } }],
+        }),
+      ),
+    );
+    assert.equal(chunks.at(-1).reason.failure.code, "CODEX_WEB_SEARCH_UNSUPPORTED");
+  } finally {
+    restore();
+  }
 });
 
 test("SSE text stream translates to harness chunks", async () => {

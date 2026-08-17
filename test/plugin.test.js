@@ -62,6 +62,21 @@ test("plugin unload removes the provider route and leaves nothing behind", async
   assert.equal(runtime.directory.has("openai-codex"), false, "configurable-provider entry disposed");
 });
 
+test("plugin registration and unload never mutate the Harness Web Runtime", async () => {
+  const app = new Context();
+  new LlmRuntime(app);
+  new FakeSettings(app);
+  const webRuntime = { searchProvider: "exa", fetchProvider: "http", marker: "unchanged" };
+  app.provide("web", webRuntime);
+  app.provide("credentials", fakeCredentialsService());
+  app.provide("commands", fakeCommandsService());
+  await app.plugin(plugin, {});
+  assert.equal(app.get("web"), webRuntime);
+  assert.deepEqual(webRuntime, { searchProvider: "exa", fetchProvider: "http", marker: "unchanged" });
+  await app.fiber.dispose();
+  assert.deepEqual(webRuntime, { searchProvider: "exa", fetchProvider: "http", marker: "unchanged" });
+});
+
 test("a full model call streams through the real llm service", async () => {
   const credential = makeCredential();
   const { app } = await bootApp();
