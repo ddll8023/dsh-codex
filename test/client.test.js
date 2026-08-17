@@ -14,6 +14,8 @@ function loadClientModule() {
         return {
           createElement: () => null,
           useEffect: () => {},
+          useLayoutEffect: () => {},
+          useRef: () => ({ current: null }),
           useState: () => [false, () => {}],
           useSyncExternalStore: () => ({ current: null }),
         };

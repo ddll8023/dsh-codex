@@ -20,25 +20,27 @@ function makeStore(initial = {}) {
   return { store: new SeamCredentialStore(ctx), seam };
 }
 
-test("parseUsageResponse reads 5h/week windows and the plan label", () => {
+test("parseUsageResponse uses server-declared window durations and the plan label", () => {
   const now = Date.parse("2026-08-17T00:00:00Z");
   const snapshot = parseUsageResponse(
     {
       plan_type: "plus",
       rate_limit: {
-        primary_window: { used_percent: 43, reset_at: "2026-08-17T03:00:00Z" },
-        secondary_window: { used_percent: 12, reset_after_seconds: 86_400 },
+        primary_window: { used_percent: 43, limit_window_seconds: 18_000, reset_at: "2026-08-17T03:00:00Z" },
+        secondary_window: { used_percent: 12, limit_window_seconds: 604_800, reset_after_seconds: 86_400 },
       },
     },
     now,
   );
   assert.equal(snapshot.planLabel, "plus");
   assert.equal(snapshot.windows.length, 2);
-  const fiveHour = snapshot.windows.find((window) => window.label === "5h");
-  assert.equal(fiveHour.percentage, 43);
-  assert.equal(fiveHour.nextResetAt, Date.parse("2026-08-17T03:00:00Z"));
-  const week = snapshot.windows.find((window) => window.label === "week");
+  const primary = snapshot.windows.find((window) => window.label === "primary");
+  assert.equal(primary.percentage, 43);
+  assert.equal(primary.windowSeconds, 18_000);
+  assert.equal(primary.nextResetAt, Date.parse("2026-08-17T03:00:00Z"));
+  const week = snapshot.windows.find((window) => window.label === "secondary");
   assert.equal(week.percentage, 12);
+  assert.equal(week.windowSeconds, 604_800);
   assert.equal(week.nextResetAt, now + 86_400_000);
 });
 
@@ -46,15 +48,15 @@ test("parseUsageResponse tolerates nested and spark plan shapes", () => {
   const snapshot = parseUsageResponse({
     account: { plan_type: "pro" },
     rate_limit: {
-      primary_window: { used_percent: "7", reset_at: 1_752_000_000 },
-      secondary_window: { used_percent: 1, reset_at: 1_752_000_000_000 },
+      primary_window: { used_percent: "7", limit_window_seconds: 18_000, reset_at: 1_752_000_000 },
+      secondary_window: { used_percent: 1, limit_window_seconds: 604_800, reset_at: 1_752_000_000_000 },
     },
     additional_rate_limits: {
       spark_rate_limits: {
         limit_name: "spark",
         rate_limit: {
-          primary_window: { used_percent: 88, reset_at: "2026-08-17T05:00:00Z" },
-          secondary_window: { used_percent: 20, reset_at: "2026-08-17T06:00:00Z" },
+          primary_window: { used_percent: 88, limit_window_seconds: 18_000, reset_at: "2026-08-17T05:00:00Z" },
+          secondary_window: { used_percent: 20, limit_window_seconds: 604_800, reset_at: "2026-08-17T06:00:00Z" },
         },
       },
     },
@@ -62,12 +64,24 @@ test("parseUsageResponse tolerates nested and spark plan shapes", () => {
   assert.equal(snapshot.planLabel, "pro");
   assert.deepEqual(
     snapshot.windows.map((window) => window.label).sort(),
-    ["5h", "spark 5h", "spark week", "week"],
+    ["primary", "secondary", "spark primary", "spark secondary"],
   );
-  // String percentages and epoch-seconds resets are normalized to ms.
-  const fiveHour = snapshot.windows.find((window) => window.label === "5h");
-  assert.equal(fiveHour.percentage, 7);
-  assert.equal(fiveHour.nextResetAt, 1_752_000_000_000);
+  // String percentages, declared durations, and epoch-seconds resets are normalized.
+  const primary = snapshot.windows.find((window) => window.label === "primary");
+  assert.equal(primary.percentage, 7);
+  assert.equal(primary.windowSeconds, 18_000);
+  assert.equal(primary.nextResetAt, 1_752_000_000_000);
+});
+
+test("parseUsageResponse does not assume the primary window is five hours", () => {
+  const snapshot = parseUsageResponse({
+    rate_limit: {
+      primary_window: { used_percent: 25, limit_window_seconds: 3_600, reset_after_seconds: 3_600 },
+    },
+  });
+  assert.equal(snapshot.windows[0].label, "primary");
+  assert.equal(snapshot.windows[0].windowSeconds, 3_600);
+  assert.match(formatUsageSummary(snapshot), /1h 25%/);
 });
 
 test("parseUsageResponse throws when no quota window is present", () => {
@@ -81,8 +95,8 @@ test("formatUsageSummary renders percent and reset for every window", () => {
     {
       planLabel: "plus",
       windows: [
-        { label: "5h", percentage: 43.2, nextResetAt: now + 3 * 3600_000 },
-        { label: "week", percentage: 12, nextResetAt: now + 30 * 60_000 },
+        { label: "primary", windowSeconds: 18_000, percentage: 43.2, nextResetAt: now + 3 * 3600_000 },
+        { label: "secondary", windowSeconds: 604_800, percentage: 12, nextResetAt: now + 30 * 60_000 },
       ],
     },
     now,
@@ -176,8 +190,8 @@ test("logged-in /codex status includes the usage line (mock HTTP)", async () => 
       return jsonResponse(200, {
         plan_type: "plus",
         rate_limit: {
-          primary_window: { used_percent: 33, reset_at: "2026-08-17T03:00:00Z" },
-          secondary_window: { used_percent: 9, reset_at: "2026-08-18T00:00:00Z" },
+          primary_window: { used_percent: 33, limit_window_seconds: 18_000, reset_at: "2026-08-17T03:00:00Z" },
+          secondary_window: { used_percent: 9, limit_window_seconds: 604_800, reset_at: "2026-08-18T00:00:00Z" },
         },
       });
     }
