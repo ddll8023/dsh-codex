@@ -164,6 +164,7 @@ dsh-codex/
     ├── usage.test.js
     ├── usage-remote.test.js
     ├── client.test.js
+    ├── package.test.js
     └── plugin.test.js
 ```
 
