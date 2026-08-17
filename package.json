@@ -9,6 +9,7 @@
     "./credentials": "./lib/credentials.js",
     "./oauth": "./lib/oauth.js",
     "./adapter": "./lib/adapter.js",
+    "./client": "./lib/client.js",
     "./package.json": "./package.json"
   },
   "files": [
@@ -19,6 +20,16 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-model-selection"
+      ],
+      "platform": "web"
     }
   },
   "scripts": {
@@ -31,7 +42,17 @@
     "@deepseek-ai/dsh-llm": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-settings": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-timeout": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-typert-protocol": "^0.1.0-rc.6",
     "@deepseek-ai/schemastery": "^3.18.1",
     "@earendil-works/pi-ai": "^0.82.1"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0",
+    "@deepseek-ai/dsh-api-remotes": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-locale": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-runtime": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-conversation": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-model-selection": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-slots": "^0.1.0-rc.6"
   }
 }

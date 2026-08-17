@@ -73,6 +73,10 @@ Usage: [plus] 5h 43% (reset 2h 5m) · week 12% (reset 4d 1h)
 
 端点不可达、返回非 2xx 或响应形状变化时，用量行降级为 `Usage: unavailable (原因)`，不影响登录状态本身；token 永不出现在输出中。
 
+### Web UI 用量显示
+
+选择 `openai-codex` 模型后，聊天输入框下方会显示 Codex 用量摘要；点击摘要可展开 5h、每周和 Spark 子额度的重置时间，并可手动刷新。未选择 Codex 时该行不显示。浏览器只通过 Host Remote 获取脱敏后的配额窗口，OAuth token 不离开服务端凭证层。
+
 ## Codex 原生网络搜索
 
 Codex 会话默认启用网络搜索：与 DeepSeek 的搜索后端无关，也不额外消耗一次请求——搜索由 Codex 后端在**同一个响应流内**完成（`web_search_call` 事件，最终答案文本正常流出），与官方 Codex CLI 启用 web search 的机制一致。
@@ -133,7 +137,7 @@ llm-codex:
 
 ```
 dsh-codex/
-├── package.json          # 插件清单：dsh.bundle 声明、依赖、测试脚本
+├── package.json          # 插件清单：dsh.bundle/dsh.client 声明、依赖、测试脚本
 ├── cordis.patch.yml      # 插件清单：bundle patch（注册 llm-codex 一行）
 ├── lib/
 │   ├── index.js          # 插件入口：注册 Provider/命令/设置/timer
@@ -143,6 +147,8 @@ dsh-codex/
 │   ├── credentials.js    # 凭证存储：credentials seam 适配 + 提前刷新（双检锁）
 │   ├── oauth.js          # /codex 命令的登录/登出/状态/用量编排与交互适配
 │   ├── usage.js          # wham/usage 配额端点拉取、解析与格式化（5h/周/Spark）
+│   ├── usage-remote.js   # Host Remote：向 Web UI 提供脱敏用量快照
+│   ├── client.js         # Web UI：conversation.composer.dock 用量摘要与详情
 │   ├── adapter.js        # CodexAdapter（dsh LlmAdapter 实现，onPayload 挂载原生 web_search 转换）
 │   ├── context.js        # harness 消息 → pi-ai Context
 │   ├── web-search.js     # request-local Hosted Web Search payload 转换（权限门控 + 模式）
@@ -156,6 +162,8 @@ dsh-codex/
     ├── adapter.test.js
     ├── web-search.test.js
     ├── usage.test.js
+    ├── usage-remote.test.js
+    ├── client.test.js
     └── plugin.test.js
 ```
 
