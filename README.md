@@ -58,6 +58,7 @@ dsh --profile web --dump-config | grep -A2 llm-codex
 | `/codex login` | 浏览器 OAuth 登录（Authorization Code + PKCE，回调 `http://localhost:1455/auth/callback`）。命令返回授权 URL，在浏览器完成登录即可，流程在后台继续。 |
 | `/codex login --device` | 无浏览器环境的 Device Code 流程（显示设备码与验证 URL）。 |
 | `/codex logout` | 删除本地 OAuth 凭证。 |
+| `/codex cancel` | 取消进行中的登录。 |
 | `/codex status` | 登录状态、账号（accountId）、token 有效期（不显示任何 token），以及当前配额用量。 |
 | `/codex usage` | 只查询并显示当前账号配额用量（5h / 每周 / Spark 子额度，含重置倒计时）。 |
 
@@ -73,9 +74,19 @@ Usage: [plus] 5h 43% (reset 2h 5m) · week 12% (reset 4d 1h)
 
 端点不可达、返回非 2xx 或响应形状变化时，用量行降级为 `Usage: unavailable (原因)`，不影响登录状态本身；token 永不出现在输出中。
 
+### 设置页（可视化登录管理）
+
+设置中新增 **Codex 账号** 独立分区（无需在模型列表中查找）：
+
+- 显示登录状态、账号 ID、token 剩余有效期与用量（5h/周/Spark，含重置倒计时与消耗进度条）；
+- 提供 **浏览器登录 / Device Code 登录 / 取消登录 / 退出登录 / 刷新用量** 按钮；浏览器登录会自动尝试打开授权链接，也可一键复制链接或设备码；
+- 登录与用量状态通过 Host Remote 轮询（`codexAccount/getStatus`，脱敏数据，token 不出服务端），进行中的登录会每 2 秒刷新。
+
 ### Web UI 用量显示
 
 选择 `openai-codex` 模型后，聊天输入框下方会显示 Codex 用量摘要；点击摘要可展开 5h、每周和 Spark 子额度的重置时间，并可手动刷新。未选择 Codex 时该行不显示。浏览器只通过 Host Remote 获取脱敏后的配额窗口，OAuth token 不离开服务端凭证层。
+
+> 原 `/codex` 命令仍保留，适合 CLI/自动化；日常推荐在设置页完成登录与用量查看。
 
 ## Codex 原生网络搜索
 
