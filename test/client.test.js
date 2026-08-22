@@ -20,6 +20,12 @@ function loadClientModule() {
           useSyncExternalStore: () => ({ current: null }),
         };
       }
+      if (name === "@deepseek-ai/dsh-client-ui-primitives") {
+        return {
+          Menu: () => null,
+          IconChevronDownOutline14: () => null,
+        };
+      }
       throw new Error(`unexpected client bundle dependency: ${name}`);
     });
     return { entry, exports };
@@ -34,6 +40,7 @@ test("Codex client bundle declares the Web UI contribution", async () => {
   assert.equal(entry.id, "dsh-codex");
   assert.ok(exports.inject.includes("slots"));
   assert.ok(exports.inject.includes("remote"));
+  assert.ok(exports.inject.includes("remote.commands"));
   assert.ok(exports.inject.includes("locale"));
   assert.equal(typeof exports.apply, "function");
 });

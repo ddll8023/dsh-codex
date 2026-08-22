@@ -12,6 +12,7 @@
 - 通过 ChatGPT Plus/Pro OAuth 接入 Codex 模型，不依赖 DeepSeek API Key。
 - 支持浏览器 OAuth 登录和 Device Code 无浏览器登录。
 - 模型选择器自动发现 Codex 模型，支持文本流、工具调用和图片输入（仅限模型目录声明支持 image 的模型）。
+- **Fast 模式**：聊天输入框可按会话在 Standard 与 Fast 间切换；Fast 通过 Codex Responses 的 `service_tier: "priority"` 请求高优先级处理。
 - 支持 Codex Native Web Search：`openai-codex` 当前 turn 暴露 `web_search` 时，自动转换为 Codex Responses hosted `web_search`。
 - 凭证使用 DSH 自身凭证服务保存，自动刷新、不写入日志。
 - **用量显示**：`/codex status` 与 `/codex usage` 展示当前账号配额（5 小时窗口、每周窗口、Spark 子额度），来自 ChatGPT 的 `wham/usage` 只读端点，无需额外凭证。
@@ -61,8 +62,15 @@ dsh --profile web --dump-config | grep -A2 llm-codex
 | `/codex cancel` | 取消进行中的登录。 |
 | `/codex status` | 登录状态、账号（accountId）、token 有效期（不显示任何 token），以及当前配额用量。 |
 | `/codex usage` | 只查询并显示当前账号配额用量（5h / 每周 / Spark 子额度，含重置倒计时）。 |
+| `/codex speed` | 查看当前会话的 Codex 速度模式。 |
+| `/codex speed standard` | 将当前会话切回 Standard。 |
+| `/codex speed fast` | 将当前会话切换为 Fast。 |
 
 登录后在模型选择器中选择 `openai-codex` 下的任意 Codex 模型即可对话；支持文本流、工具调用和图片输入，事件格式与现有 Provider 一致。
+
+### Fast 模式
+
+选择 `openai-codex` 模型后，聊天输入框中会出现速度菜单。Fast 状态按会话保存，切换后从下一次尚未组装的请求生效；正在执行的请求不会中途改变。Standard 不发送 `service_tier`，Fast 发送 `service_tier: "priority"`。如果 Codex 后端拒绝该服务等级，请切回 Standard 后重试。
 
 ### 用量显示
 
@@ -153,6 +161,7 @@ dsh-codex/
 ├── lib/
 │   ├── index.js          # 插件入口：注册 Provider/命令/设置/timer
 │   ├── constants.js      # 常量：Provider id、默认地址、凭证命名空间
+│   ├── speed.js          # 会话速度事件、projection 与 Fast/Standard 状态折叠
 │   ├── config.js         # 配置 schema（baseURL/transport/nativeWebSearch/webSearchMode/refreshLeadTime/retryPolicy…）
 │   ├── models.js         # pi-ai Models 集合构建（含 baseURL 重定向）
 │   ├── credentials.js    # 凭证存储：credentials seam 适配 + 提前刷新（双检锁）
@@ -171,6 +180,7 @@ dsh-codex/
     ├── refresh.test.js
     ├── oauth.test.js
     ├── adapter.test.js
+    ├── speed.test.js
     ├── web-search.test.js
     ├── usage.test.js
     ├── usage-remote.test.js

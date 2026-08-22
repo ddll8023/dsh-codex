@@ -49,6 +49,44 @@ test("plugin load registers the openai-codex provider and commands", async () =>
   }
 });
 
+test("/codex speed persists and reports the session speed", async () => {
+  const { app, commands } = await bootApp();
+  try {
+    const session = {
+      events: [],
+      append(type, data) {
+        this.events.push({ type, data });
+      },
+    };
+    const codex = commands.find("codex");
+    const invoke = (rawInput) => codex.handler({
+      commandId: "speed-1",
+      agent: { session },
+      rawInput,
+      signal: new AbortController().signal,
+    });
+
+    let result = await invoke(" speed");
+    assert.equal(result.kind, "success");
+    assert.match(result.text, /Standard/);
+
+    result = await invoke(" speed fast");
+    assert.equal(result.kind, "success");
+    assert.match(result.text, /Fast/);
+    assert.deepEqual(session.events, [{ type: "codex/speed", data: { speed: "fast" } }]);
+
+    result = await invoke(" speed");
+    assert.equal(result.kind, "success");
+    assert.match(result.text, /Fast/);
+
+    result = await invoke(" speed fast");
+    assert.equal(session.events.length, 1, "repeating the same speed does not append another event");
+    assert.equal(result.kind, "success");
+  } finally {
+    await app.fiber.dispose();
+  }
+});
+
 test("plugin unload removes the provider route and leaves nothing behind", async () => {
   const app = new Context();
   const runtime = new LlmRuntime(app); // keep the instance to inspect the registry after disposal

@@ -84,6 +84,7 @@ test("wire request carries the Codex headers and Responses-API body", async () =
       : captured.body,
   );
   assert.equal(body.model, "gpt-5.4");
+  assert.equal(body.service_tier, undefined);
   assert.equal(body.stream, true);
   assert.equal(body.store, false);
   assert.equal(body.instructions, "You are a test.");
@@ -93,6 +94,45 @@ test("wire request carries the Codex headers and Responses-API body", async () =
   const tool = body.tools.find((entry) => entry.name === "get_weather");
   assert.ok(tool, "tools sent");
   assert.equal(tool.type, "function");
+});
+
+test("Fast mode sends the Codex priority service tier", async () => {
+  const credential = makeCredential();
+  const { adapter } = makeAdapter({ OPENAI_CODEX_OAUTH: JSON.stringify(credential) });
+  let captured;
+  const { restore } = mockFetch(({ headers, body }) => {
+    captured = { headers, body };
+    return sseResponse(textStreamEvents("fast"));
+  });
+  try {
+    const chunks = await collectChunks(
+      adapter.stream(generateOptions({ codexServiceTier: "priority" })),
+    );
+    assert.equal(chunks.at(-1).reason.kind, "stop");
+  } finally {
+    restore();
+  }
+  assert.equal(decodeBody(captured).service_tier, "priority");
+});
+
+test("unknown Codex service tiers fail before provider I/O", async () => {
+  const credential = makeCredential();
+  const { adapter } = makeAdapter({ OPENAI_CODEX_OAUTH: JSON.stringify(credential) });
+  let calls = 0;
+  const { restore } = mockFetch(() => {
+    calls += 1;
+    return sseResponse(textStreamEvents("unexpected"));
+  });
+  try {
+    const chunks = await collectChunks(
+      adapter.stream(generateOptions({ codexServiceTier: "turbo" })),
+    );
+    assert.equal(chunks.at(-1).reason.kind, "error");
+    assert.equal(chunks.at(-1).reason.failure.code, "UNSUPPORTED_OPTION");
+  } finally {
+    restore();
+  }
+  assert.equal(calls, 0);
 });
 
 test("Codex native web search replaces only the Harness web_search function", async () => {
