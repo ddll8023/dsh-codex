@@ -18,6 +18,12 @@
 - **用量显示**：`/codex status` 与 `/codex usage` 展示当前账号配额（5 小时窗口、每周窗口、Spark 子额度），来自 ChatGPT 的 `wham/usage` 只读端点，无需额外凭证。
 - **Codex 原生网络搜索**：默认启用，直接在请求中注入 Responses API 的 `web_search` 内置工具（与官方 Codex CLI 同机制），模型在回复流内完成联网搜索，不再依赖 DeepSeek 搜索后端。
 
+## 与新版 DSH 的兼容性
+
+DSH `0.1.1-rc.2` 及更高版本的 `dsh-llm-pi-ai` 会预先声明 `openai-codex` 的 catalog 目录项。插件会复用该目录项，但仍由本插件注册 OAuth 适配器、登录命令和账号 UI。
+
+启用本插件时不要再在 `llm-pi-ai.providers` 中添加 `openai-codex`；那会激活宿主的另一套适配器并与本插件冲突。
+
 ## 安装与启用
 
 ### 方式 A（推荐）：`dsh plugin`

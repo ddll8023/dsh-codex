@@ -49,6 +49,32 @@ test("plugin load registers the openai-codex provider and commands", async () =>
   }
 });
 
+test("plugin reuses a predeclared catalog directory on newer Harness", async () => {
+  const app = new Context();
+  const runtime = new LlmRuntime(app);
+  runtime.registerConfigurableProviders([{
+    provider: "openai-codex",
+    displayName: "OpenAI Codex",
+    settingsNs: "llm-pi-ai",
+    settingsPath: ["providers", "openai-codex"],
+    declared: false,
+  }]);
+  new FakeSettings(app);
+  app.provide("credentials", fakeCredentialsService());
+  const commands = fakeCommandsService();
+  app.provide("commands", commands);
+  await app.plugin(plugin, {});
+  try {
+    assert.ok(app.llm.listProviders().some((entry) => entry.id === "openai-codex"), "OAuth adapter route registered");
+    const configurable = app.llm.listConfigurableProviders();
+    assert.equal(configurable.filter((entry) => entry.provider === "openai-codex").length, 1);
+    assert.equal(configurable.find((entry) => entry.provider === "openai-codex").settingsNs, "llm-pi-ai");
+    assert.ok(commands.find("codex"), "plugin login command remains registered");
+  } finally {
+    await app.fiber.dispose();
+  }
+});
+
 test("/codex speed persists and reports the session speed", async () => {
   const { app, commands } = await bootApp();
   try {
