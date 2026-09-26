@@ -20,11 +20,11 @@
 
 ## 与新版 DSH 的兼容性
 
-DSH `0.1.1-rc.2` 及更高版本的 `dsh-llm-pi-ai` 会预先声明 `openai-codex` 的 catalog 目录项。插件会复用该目录项，但仍由本插件注册 OAuth 适配器、登录命令和账号 UI。
+当前兼容基线为 DSH Desktop `0.1.7-rc.2` 包系列；插件的 DSH Host/API 依赖与该版本对齐。`dsh-llm-pi-ai` 会预先声明 `openai-codex` 的 catalog 目录项，插件复用该目录项，但仍由本插件注册 OAuth 适配器、登录命令和账号 UI。
 
-Typert Remote 使用 `@deepseek-ai/dsh-typert-protocol ^0.1.7-rc.1` 的 strict codec 契约，通过 `create()` 工厂提供 schema；旧版仅使用 `schema` 字段的 Typert runtime 不在支持范围内。
+Typert Remote 使用 `@deepseek-ai/dsh-typert-protocol ^0.1.7-rc.2` 的 strict codec 契约，通过 `create()` 工厂提供 schema；旧版仅使用 `schema` 字段的 Typert runtime 不在支持范围内。
 
-DSH `0.1.1` 起的运行时会调用 `LlmAdapter.prepareCall()`。因此 `@deepseek-ai/dsh-llm` 声明为 peer dependency，插件需复用 DSH 宿主提供的同一份适配器基类，避免加载缺少该方法的旧副本。
+`@deepseek-ai/dsh-llm` 以 `^0.1.7-rc.2` 声明为 peer dependency，插件复用 DSH Host 提供的同一份适配器基类，避免加载重复副本。`@deepseek-ai/dsh-client-runtime` 已从新版 DSH 移除，本插件不再注入或声明该包。
 
 启用本插件时不要再在 `llm-pi-ai.providers` 中添加 `openai-codex`；那会激活宿主的另一套适配器并与本插件冲突。
 
