@@ -53,6 +53,52 @@ test("adapter metadata and model catalog", async () => {
   assert.ok(resolved.reasoning.efforts.length > 0);
 });
 
+test("adapter refreshes live models before listing and retries unknown models before dispatch", async () => {
+  const credential = makeCredential();
+  const seam = fakeCredentialsService({ OPENAI_CODEX_OAUTH: JSON.stringify(credential) });
+  const ctx = { get: (name) => (name === "credentials" ? seam : undefined) };
+  const store = new SeamCredentialStore(ctx);
+  const bundled = buildModels(store, undefined);
+  const template = bundled.getModel("openai-codex", "gpt-5.4");
+  const listedModel = { ...template, id: "gpt-live-listed", name: "Live Listed" };
+  const streamedModel = { ...template, id: "gpt-live-stream", name: "Live Stream" };
+  let currentModels = bundled;
+  let refreshCalls = 0;
+  let forcedRefreshes = 0;
+  const adapter = new CodexAdapter({
+    options: () => resolveAdapterOptions(),
+    models: () => currentModels,
+    refreshModels: async ({ force = false } = {}) => {
+      refreshCalls += 1;
+      if (force) forcedRefreshes += 1;
+      currentModels = buildModels(store, undefined, [listedModel, streamedModel]);
+    },
+    freshen: async () => {},
+  });
+
+  const listed = await adapter.listModels("openai-codex");
+  assert.ok(listed.some((model) => model.id === listedModel.id));
+  const resolved = await adapter.resolveModel("openai-codex", listedModel.id);
+  assert.equal(resolved.id, listedModel.id);
+
+  // Simulate a persisted model id absent from the bundled catalog after restart.
+  currentModels = bundled;
+  let requestUrl;
+  const { restore } = mockFetch(({ url }) => {
+    requestUrl = url;
+    return sseResponse(textStreamEvents("live model"));
+  });
+  try {
+    const chunks = await collectChunks(adapter.stream(generateOptions({ model: streamedModel.id })));
+    assert.equal(chunks.at(-1).reason.kind, "stop");
+  } finally {
+    restore();
+  }
+  assert.equal(requestUrl, "https://chatgpt.com/backend-api/codex/responses");
+  assert.equal(refreshCalls, 3);
+  assert.equal(forcedRefreshes, 1);
+});
+
 test("wire request carries the Codex headers and Responses-API body", async () => {
   const credential = makeCredential({ accountId: "user-wire" });
   const { adapter } = makeAdapter({ OPENAI_CODEX_OAUTH: JSON.stringify(credential) });

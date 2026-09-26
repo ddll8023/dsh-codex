@@ -60,7 +60,7 @@ dsh --profile web --dump-config | grep -A2 llm-codex
 #   name: dsh-codex
 ```
 
-启用后模型选择器中会出现 **OpenAI Codex** Provider 及其模型（gpt-5.3-codex-spark、gpt-5.4、gpt-5.4-mini、gpt-5.5、gpt-5.6-luna 等，来自 pi-ai 的 Codex 目录）。
+启用后模型选择器中会出现 **OpenAI Codex** Provider。登录后，模型列表从当前 ChatGPT/Codex 账号的模型目录接口刷新；未登录或接口不可用时回退到内置目录。
 
 ## 登录与使用
 
@@ -108,6 +108,12 @@ Usage: [plus] 5h 43% (reset 2h 5m) · week 12% (reset 4d 1h)
 
 > 原 `/codex` 命令仍保留，适合 CLI/自动化；日常推荐在设置页完成登录与用量查看。
 
+## Codex 实时模型目录
+
+登录后，Host 使用已保存的 OAuth token 和 account ID 请求 `GET {baseURL}/codex/models?client_version=...`，模型选择器展示账号当前可用的 Codex 模型。目录按账号缓存 60 秒并使用 ETag；请求超时、失败或响应格式变化时依次回退到该账号上次成功的目录和 pi-ai 内置目录。OAuth token 不会发到浏览器。
+
+`llm-codex.modelCatalogClientVersion` 可调整 Codex 客户端版本号，默认 `0.157.0`。这是 Codex 后端内部接口而非稳定公开 API，字段和版本门槛可能变化。接口不提供定价及完整输出上限：已有模型沿用内置元数据，新模型使用保守默认值。
+
 ## Codex 原生网络搜索
 
 Codex 会话默认启用网络搜索：与 DeepSeek 的搜索后端无关，也不额外消耗一次请求——搜索由 Codex 后端在**同一个响应流内**完成（`web_search_call` 事件，最终答案文本正常流出），与官方 Codex CLI 启用 web search 的机制一致。
@@ -132,6 +138,7 @@ Codex 会话默认启用网络搜索：与 DeepSeek 的搜索后端无关，也�
 # $DSH_HOME/settings.yaml 的 llm-codex 段，或 cordis.patch.yml 中该行的 config
 llm-codex:
   baseURL: https://chatgpt.com/backend-api   # 端点（默认）
+  modelCatalogClientVersion: "0.157.0"       # Codex /models client_version 参数
   transport: sse                             # sse | websocket | websocket-cached | auto
   cacheRetention: short                      # none | short | long
   nativeWebSearch: true                       # true=启用 Codex 原生网络搜索（默认）；false=退回 harness web_search 函数工具
@@ -174,8 +181,9 @@ dsh-codex/
 │   ├── index.js          # 插件入口：注册 Provider/命令/设置/timer
 │   ├── constants.js      # 常量：Provider id、默认地址、凭证命名空间
 │   ├── speed.js          # 会话速度事件、projection 与 Fast/Standard 状态折叠
-│   ├── config.js         # 配置 schema（baseURL/transport/nativeWebSearch/webSearchMode/refreshLeadTime/retryPolicy…）
-│   ├── models.js         # pi-ai Models 集合构建（含 baseURL 重定向）
+│   ├── config.js         # 配置 schema（baseURL/modelCatalogClientVersion/transport/nativeWebSearch…）
+│   ├── model-catalog.js  # 账号级 Codex 模型目录请求、校验、缓存与回退
+│   ├── models.js         # pi-ai Models 集合构建（实时目录与 baseURL 重定向）
 │   ├── credentials.js    # 凭证存储：credentials seam 适配 + 提前刷新（双检锁）
 │   ├── oauth.js          # /codex 命令的登录/登出/状态/用量编排与交互适配
 │   ├── usage.js          # wham/usage 配额端点拉取、解析与格式化（5h/周/Spark）
@@ -192,6 +200,7 @@ dsh-codex/
     ├── refresh.test.js
     ├── oauth.test.js
     ├── adapter.test.js
+    ├── model-catalog.test.js
     ├── speed.test.js
     ├── web-search.test.js
     ├── usage.test.js
@@ -208,7 +217,7 @@ cd dsh-codex
 npm test
 ```
 
-测试覆盖（53 项，全绿）：
+测试覆盖（mock HTTP，不访问真实 ChatGPT 账号）：
 
 - Codex Native Web Search：权限存在时 function → hosted 转换、其他工具保留、无权限不注入、配置关闭、live/cached/indexed/disabled 模式
 - `web_search_call`/未知搜索事件与带 annotation 的文本流不崩溃；不支持搜索错误映射为 `CODEX_WEB_SEARCH_UNSUPPORTED`
@@ -230,4 +239,4 @@ npm test
 - 真实 ChatGPT 账号登录（按约束未执行；OAuth 各环节在 mock HTTP 下验证）。
 - `wham/usage` 端点与原生 web_search 行为需真实账号验证（协议形状来自社区逆向与官方 Codex CLI 同机制，mock 覆盖了请求/解析/降级路径）。
 - `transport: websocket*`：默认走 SSE；websocket 路径未在 mock 中覆盖。
-- 与最新 pi-ai 目录的模型清单同步（模型来自 pi-ai 目录，非本插件固化）。
+- 实时 `/codex/models` 接口需用真实 ChatGPT 账号确认客户端版本门槛与响应兼容性；当前单元测试仅使用 mock HTTP。
