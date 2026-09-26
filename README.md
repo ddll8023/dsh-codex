@@ -4,7 +4,7 @@
 
 - Provider 路由：`openai-codex`
 - API 类型：`openai-codex-responses`（Codex Responses API，不是 `/v1/chat/completions`）
-- 兼容版本：DSH `>= 0.1.0-rc.6`
+- Typert 协议：`@deepseek-ai/dsh-typert-protocol ^0.1.7-rc.1`
 - License：MIT
 
 ## 功能特性
@@ -21,6 +21,8 @@
 ## 与新版 DSH 的兼容性
 
 DSH `0.1.1-rc.2` 及更高版本的 `dsh-llm-pi-ai` 会预先声明 `openai-codex` 的 catalog 目录项。插件会复用该目录项，但仍由本插件注册 OAuth 适配器、登录命令和账号 UI。
+
+Typert Remote 使用 `@deepseek-ai/dsh-typert-protocol ^0.1.7-rc.1` 的 strict codec 契约，通过 `create()` 工厂提供 schema；旧版仅使用 `schema` 字段的 Typert runtime 不在支持范围内。
 
 DSH `0.1.1` 起的运行时会调用 `LlmAdapter.prepareCall()`。因此 `@deepseek-ai/dsh-llm` 声明为 peer dependency，插件需复用 DSH 宿主提供的同一份适配器基类，避免加载缺少该方法的旧副本。
 
@@ -64,7 +66,7 @@ dsh --profile web --dump-config | grep -A2 llm-codex
 
 | 命令 | 说明 |
 | --- | --- |
-| `/codex login` | 浏览器 OAuth 登录（Authorization Code + PKCE，回调 `http://localhost:1455/auth/callback`）。命令返回授权 URL，在浏览器完成登录即可，流程在后台继续。 |
+| `/codex login` | 浏览器 OAuth 登录（Authorization Code + PKCE，回调 `http://localhost:1455/auth/callback`）。在 DSH Web/Desktop 客户端执行时会尝试自动打开授权页；若被弹窗策略拦截，可从命令结果打开授权 URL。流程在后台继续。 |
 | `/codex login --device` | 无浏览器环境的 Device Code 流程（显示设备码与验证 URL）。 |
 | `/codex logout` | 删除本地 OAuth 凭证。 |
 | `/codex cancel` | 取消进行中的登录。 |
@@ -73,6 +75,8 @@ dsh --profile web --dump-config | grep -A2 llm-codex
 | `/codex speed` | 查看当前会话的 Codex 速度模式。 |
 | `/codex speed standard` | 将当前会话切回 Standard。 |
 | `/codex speed fast` | 将当前会话切换为 Fast。 |
+
+`/codex login --device` 不自动打开浏览器，会显示设备码和验证 URL。
 
 登录后在模型选择器中选择 `openai-codex` 下的任意 Codex 模型即可对话；支持文本流、工具调用和图片输入，事件格式与现有 Provider 一致。
 
