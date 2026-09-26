@@ -53,7 +53,7 @@ test("Codex client bundle declares the Web UI contribution", async () => {
 
   const packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
   assert.ok(packageJson.dsh.client.inject.includes("@deepseek-ai/dsh-client-ui-commands"));
-  assert.equal(packageJson.peerDependencies?.["@deepseek-ai/dsh-client-ui-commands"], "^0.0.1-rc.3");
+  assert.equal(packageJson.peerDependencies?.["@deepseek-ai/dsh-client-ui-commands"], "^0.1.7-rc.2");
 });
 
 test("only a successful browser /codex login opens the authorization URL", async () => {
