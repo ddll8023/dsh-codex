@@ -24,7 +24,7 @@
 
 Typert Remote 使用 `@deepseek-ai/dsh-typert-protocol ^0.1.7-rc.2` 的 strict codec 契约，通过 `create()` 工厂提供 schema；旧版仅使用 `schema` 字段的 Typert runtime 不在支持范围内。
 
-`@deepseek-ai/dsh-llm` 以 `^0.1.7-rc.2` 声明为 peer dependency，插件复用 DSH Host 提供的同一份适配器基类，避免加载重复副本。`@deepseek-ai/dsh-client-runtime` 已从新版 DSH 移除，本插件不再注入或声明该包。
+`@deepseek-ai/dsh-llm` 以 `^0.1.7-rc.2` 声明为 peer dependency，插件复用 DSH Host 提供的同一份适配器基类，避免加载重复副本。`dsh-scope` 与 `dsh-invariants` 由插件依赖提供，以满足当前 session/settings/credentials 包的 peer 要求，用户无需手工添加到 profile。`@deepseek-ai/dsh-client-runtime` 已从新版 DSH 移除，本插件不再注入或声明该包。
 
 启用本插件时不要再在 `llm-pi-ai.providers` 中添加 `openai-codex`；那会激活宿主的另一套适配器并与本插件冲突。
 

@@ -49,6 +49,8 @@ test("DSH package dependencies match Desktop 0.1.7-rc.2 and omit removed client 
   const packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
   for (const name of [
     "@deepseek-ai/dsh-credentials",
+    "@deepseek-ai/dsh-invariants",
+    "@deepseek-ai/dsh-scope",
     "@deepseek-ai/dsh-settings",
     "@deepseek-ai/dsh-session",
     "@deepseek-ai/dsh-timeout",
