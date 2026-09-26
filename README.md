@@ -22,6 +22,8 @@
 
 DSH `0.1.1-rc.2` 及更高版本的 `dsh-llm-pi-ai` 会预先声明 `openai-codex` 的 catalog 目录项。插件会复用该目录项，但仍由本插件注册 OAuth 适配器、登录命令和账号 UI。
 
+DSH `0.1.1` 起的运行时会调用 `LlmAdapter.prepareCall()`。因此 `@deepseek-ai/dsh-llm` 声明为 peer dependency，插件需复用 DSH 宿主提供的同一份适配器基类，避免加载缺少该方法的旧副本。
+
 启用本插件时不要再在 `llm-pi-ai.providers` 中添加 `openai-codex`；那会激活宿主的另一套适配器并与本插件冲突。
 
 ## 安装与启用
