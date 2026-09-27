@@ -48,10 +48,11 @@ test("DSH LLM adapter API is a current-host peer so the host supplies LlmAdapter
 test("DSH package dependencies match Desktop 0.1.7-rc.2 and omit removed client runtime", () => {
   const packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
   for (const name of [
+    "@deepseek-ai/dsh-attachment",
     "@deepseek-ai/dsh-credentials",
     "@deepseek-ai/dsh-invariants",
     "@deepseek-ai/dsh-scope",
-    "@deepseek-ai/dsh-settings",
+    "@deepseek-ai/dsh-util-values",
     "@deepseek-ai/dsh-session",
     "@deepseek-ai/dsh-timeout",
   ]) {
@@ -65,10 +66,16 @@ test("DSH package dependencies match Desktop 0.1.7-rc.2 and omit removed client 
     "@deepseek-ai/dsh-client-ui-settings",
     "@deepseek-ai/dsh-client-ui-commands",
     "@deepseek-ai/dsh-client-ui-slots",
+    "@deepseek-ai/dsh-client-ui-primitives",
     "@deepseek-ai/dsh-typert-protocol",
   ]) {
     assert.equal(packageJson.peerDependencies?.[name], "^0.1.7-rc.2", `${name} peer version`);
   }
+  assert.equal(packageJson.dsh.client.inject.includes("@deepseek-ai/dsh-client-ui-primitives"), true);
+  for (const name of ["@deepseek-ai/dsh-llm", "@deepseek-ai/dsh-typert-protocol", "@deepseek-ai/dsh-session-projection"]) {
+    assert.equal(packageJson.devDependencies?.[name], "0.1.7-rc.2", `${name} test dependency version`);
+  }
+  assert.equal(packageJson.dependencies?.["@deepseek-ai/dsh-settings"], undefined);
   assert.equal(packageJson.peerDependencies?.["@deepseek-ai/dsh-client-runtime"], undefined);
   assert.equal(packageJson.dsh.client.inject.includes("@deepseek-ai/dsh-client-runtime"), false);
 });

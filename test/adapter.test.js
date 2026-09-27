@@ -66,7 +66,7 @@ test("adapter refreshes live models before listing and retries unknown models be
   let refreshCalls = 0;
   let forcedRefreshes = 0;
   const adapter = new CodexAdapter({
-    options: () => resolveAdapterOptions(),
+    options: () => resolveAdapterOptions({}),
     models: () => currentModels,
     refreshModels: async ({ force = false } = {}) => {
       refreshCalls += 1;
@@ -462,10 +462,14 @@ test("image content is read from durable attachments and sent as Responses input
   };
   const attachmentBytes = Uint8Array.from([0, 1, 2, 3]);
   let readRef;
+  let readTarget;
+  let readSignal;
   const attachments = {
-    async readImage(ref) {
+    async readImageRequest(ref, target, signal) {
       readRef = ref;
-      return { ref: imageRef, data: attachmentBytes };
+      readTarget = target;
+      readSignal = signal;
+      return { ...imageRef, data: attachmentBytes };
     },
   };
   const { adapter } = makeAdapter({ OPENAI_CODEX_OAUTH: JSON.stringify(credential) }, async () => {}, attachments);
@@ -489,23 +493,25 @@ test("image content is read from durable attachments and sent as Responses input
     restore();
   }
   assert.deepEqual(readRef, imageRef);
+  assert.deepEqual(readTarget, { width: 1, height: 1, maxBytes: 1048576 });
+  assert.ok(readSignal instanceof AbortSignal);
   const body = JSON.parse(
     captured.headers["content-encoding"] === "zstd"
       ? zstdDecompressSync(Buffer.from(captured.body)).toString()
       : captured.body,
   );
   const user = body.input.find((entry) => entry.role === "user");
-  assert.deepEqual(user.content, [
-    { type: "input_text", text: "Describe this image." },
-    { type: "input_image", detail: "auto", image_url: "data:image/png;base64,AAECAw==" },
-  ]);
+  assert.deepEqual(user.content[0], { type: "input_text", text: "Describe this image." });
+  assert.equal(user.content[1].type, "input_text");
+  assert.match(user.content[1].text, /Image img-1; request preview 1x1px/);
+  assert.deepEqual(user.content[2], { type: "input_image", detail: "auto", image_url: "data:image/png;base64,AAECAw==" });
 });
 
 test("image input remains unsupported for text-only Codex models", async () => {
   const credential = makeCredential();
   const attachments = {
-    async readImage(ref) {
-      return { ref, data: Uint8Array.from([1]) };
+    async readImageRequest() {
+      assert.fail("text-only model must reject images before attachment projection");
     },
   };
   const { adapter } = makeAdapter({ OPENAI_CODEX_OAUTH: JSON.stringify(credential) }, async () => {}, attachments);

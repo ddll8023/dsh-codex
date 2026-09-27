@@ -4,7 +4,7 @@
 
 - Provider 路由：`openai-codex`
 - API 类型：`openai-codex-responses`（Codex Responses API，不是 `/v1/chat/completions`）
-- Typert 协议：`@deepseek-ai/dsh-typert-protocol ^0.1.7-rc.1`
+- Typert 协议：`@deepseek-ai/dsh-typert-protocol ^0.1.7-rc.2`
 - License：MIT
 
 ## 功能特性
@@ -20,11 +20,11 @@
 
 ## 与新版 DSH 的兼容性
 
-当前兼容基线为 DSH Desktop `0.1.7-rc.2` 包系列；插件的 DSH Host/API 依赖与该版本对齐。`dsh-llm-pi-ai` 会预先声明 `openai-codex` 的 catalog 目录项，插件复用该目录项，但仍由本插件注册 OAuth 适配器、登录命令和账号 UI。
+当前适配目标为 DSH Desktop `0.1.7-rc.2` 包系列。设置已改用 Cordis volatile Config、独立工具结果使用 `role: "tool"`、回放使用 `{ response, blocks }` 信封。图片已接入 `readImageRequest`，Fast 已改用 Host 投影或会话查询，不再读取 `session.events`。已使用 Desktop 自带 Node v24.21.0 安装本地依赖并通过插件导入检查，97 项自动化测试全部通过。测试使用模拟后端及本地 OAuth 回调；尚未验证 Desktop 实际从 GitHub 安装、页面加载和真实账号对话。`dsh-llm-pi-ai` 会预先声明 `openai-codex` 的 catalog 目录项，插件复用该目录项，但仍由本插件注册 OAuth 适配器、登录命令和账号 UI。
 
 Typert Remote 使用 `@deepseek-ai/dsh-typert-protocol ^0.1.7-rc.2` 的 strict codec 契约，通过 `create()` 工厂提供 schema；旧版仅使用 `schema` 字段的 Typert runtime 不在支持范围内。
 
-`@deepseek-ai/dsh-llm` 以 `^0.1.7-rc.2` 声明为 peer dependency，插件复用 DSH Host 提供的同一份适配器基类，避免加载重复副本。`dsh-scope` 与 `dsh-invariants` 由插件依赖提供，以满足当前 session/settings/credentials 包的 peer 要求，用户无需手工添加到 profile。`@deepseek-ai/dsh-client-runtime` 已从新版 DSH 移除，本插件不再注入或声明该包。
+`@deepseek-ai/dsh-llm` 以 `^0.1.7-rc.2` 声明为 peer dependency，插件复用 DSH Host 提供的同一份适配器基类，避免加载重复副本。`dsh-scope` 与 `dsh-invariants` 由插件依赖提供，以满足 session/credentials 包的 peer 要求；JSON 比较工具直接依赖 `dsh-util-values`，不再通过已移除的 settings 导出获取。插件不直接依赖 `dsh-settings`，设置表单由 Host 根据插件 Config 生成，无需手工向 profile 补包。`@deepseek-ai/dsh-client-runtime` 已从新版 DSH 移除，本插件不再注入或声明该包。
 
 启用本插件时不要再在 `llm-pi-ai.providers` 中添加 `openai-codex`；那会激活宿主的另一套适配器并与本插件冲突。
 
@@ -82,7 +82,7 @@ dsh --profile web --dump-config | grep -A2 llm-codex
 
 ### Fast 模式
 
-选择 `openai-codex` 模型后，聊天输入框中会出现速度菜单。Fast 状态按会话保存，切换后从下一次尚未组装的请求生效；正在执行的请求不会中途改变。Standard 不发送 `service_tier`，Fast 发送 `service_tier: "priority"`。如果 Codex 后端拒绝该服务等级，请切回 Standard 后重试。
+选择 `openai-codex` 模型后，聊天输入框中会出现速度菜单。Fast 状态按会话保存，通过新版 `stateSchema` / `wire` 投影同步到客户端；Host 缺少投影服务时从 `sessionQuery` 读取，二者均不可用时明确报错，不静默重置速度。切换后从下一次尚未组装的请求生效；正在执行的请求不会中途改变。Standard 不发送 `service_tier`，Fast 发送 `service_tier: "priority"`。如果 Codex 后端拒绝该服务等级，请切回 Standard 后重试。
 
 ### 用量显示
 
@@ -134,21 +134,27 @@ Codex 会话默认启用网络搜索：与 DeepSeek 的搜索后端无关，也�
 
 ### 配置（可选，非密钥）
 
+通过 Host 插件设置表单编辑，或将以下内容放入当前 profile 的 **已有 `llm-codex` 插件条目的 `config` 对象**；不要重复添加插件条目，也不再写入旧 `settings.yaml`：
+
 ```yaml
-# $DSH_HOME/settings.yaml 的 llm-codex 段，或 cordis.patch.yml 中该行的 config
-llm-codex:
-  baseURL: https://chatgpt.com/backend-api   # 端点（默认）
-  modelCatalogClientVersion: "0.157.0"       # Codex /models client_version 参数
-  transport: sse                             # sse | websocket | websocket-cached | auto
-  cacheRetention: short                      # none | short | long
-  nativeWebSearch: true                       # true=启用 Codex 原生网络搜索（默认）；false=退回 harness web_search 函数工具
-  webSearchMode: live                         # live | cached | indexed | disabled
-  refreshLeadTimeMs: 300000                  # 提前刷新阈值
-  streamIdleTimeoutMs: 300000
-  retryPolicy:
-    mode: normal
-    maxRetries: 2
+baseURL: https://chatgpt.com/backend-api
+modelCatalogClientVersion: "0.157.0"
+transport: sse                 # sse | websocket | websocket-cached | auto
+cacheRetention: short         # none | short | long
+nativeWebSearch: true
+webSearchMode: live            # live | cached | indexed | disabled
+refreshLeadTimeMs: 300000
+streamIdleTimeoutMs: 300000
+retryPolicy:
+  mode: normal
+  maxRetries: 2
 ```
+
+整个配置对象声明为 volatile。Host loader 校验后更新不可变快照，下一次请求读取新值；非法配置在提交前被拒绝。设置命名空间使用实际插件条目 ID，默认是 `llm-codex`。OAuth 凭证仍只由 Host 凭证服务保存，不进入此配置。
+
+回放数据按新版信封写入；不迁移旧插件写入的扁平回放数据。测试包含模拟 loader 更新、独立工具结果、Host 截断工具调用后的回放对齐、请求图片投影和 Fast 会话投影恢复；完整测试结果为 97 项通过、0 项失败。模拟 loader 测试不替代实际 Desktop 配置更新验证。
+
+图片通过 Host 生成请求预览，默认单图最多 4,194,304 像素、目标 1 MiB，请求内图片 base64 总量上限 20 MiB。超过总量时返回 Host 的 `IMAGE_OFFLOAD_REQUIRED` 及需卸载的图片数量；已标记卸载的图片只发送说明文本，不重新读取或上传。图片读取接收请求取消信号，用户消息和独立工具结果中的图片采用同一转换规则。
 
 ## 安全与凭证
 

@@ -9,7 +9,8 @@
  * @module dsh-codex/test-helpers
  */
 
-import { Service } from "@deepseek-ai/cordis";
+import { Context } from "@deepseek-ai/cordis";
+import { Config } from "../lib/config.js";
 
 /** Base64url-encode bytes for a fake JWT. */
 function b64url(input) {
@@ -79,46 +80,20 @@ export function fakeCredentialsService(initial = {}) {
   };
 }
 
-/** Minimal fake of the settings service for installSettingsSection. */
-export class FakeSettings extends Service {
-  static provide = "settings";
-  constructor(ctx) {
-    super(ctx, "settings");
-    this.registrations = new Map();
-  }
-  register(ns, schema, options) {
-    if (this.registrations.has(ns)) throw new Error(`settings namespace "${ns}" already registered`);
-    const watchers = new Set();
-    const registration = {
-      ns,
-      schema,
-      base: options?.base,
-      validate: options?.validate,
-      watchers,
-      revision: 0,
-      resolved: schema(options?.base ?? {}),
-    };
-    if (registration.validate !== undefined) registration.validate(registration.resolved);
-    this.registrations.set(ns, registration);
-    const scope = {
-      get: () => registration.resolved,
-      watch: (callback) => {
-        watchers.add(callback);
-        return () => watchers.delete(callback);
-      },
-    };
-    return scope;
-  }
-  /** Simulate a settings write for tests (merge patch over base, re-resolve). */
-  update(ns, patch) {
-    const registration = this.registrations.get(ns);
-    if (registration === undefined) throw new Error(`settings namespace "${ns}" is not registered`);
-    const next = registration.schema({ ...registration.base, ...patch });
-    registration.validate?.(next);
-    registration.resolved = next;
-    registration.revision += 1;
-    for (const watcher of [...registration.watchers]) watcher(next, registration.resolved);
-  }
+/**
+ * 模拟 loader 的校验、快照提交和作用域更新通知；不模拟已移除的 settings.register。
+ * 使用 Host 的共享 volatile 写协议，仅用于测试，不代表完整 loader 集成测试。
+ */
+export function updatePluginConfig(fiber, patch) {
+  // plugin() 返回可 await 的包装对象；Host 事件身份使用 ctx 中的真实 Fiber。
+  fiber = fiber.ctx.fiber;
+  const raw = { ...fiber.config.get(), ...patch };
+  const validated = fiber.ctx.waterfall(fiber, "internal/config", raw, () => raw);
+  const candidate = Config(validated);
+  fiber.config[Symbol.for("cosmokit.volatile.write")](candidate.get());
+  const scope = Object.create(fiber.ctx);
+  scope[Context.filter] = (owner) => owner.fiber === fiber;
+  fiber.ctx.emit(scope, "loader/volatile-update", [[]]);
 }
 
 /** Minimal fake of the commands registry. */
